@@ -11,8 +11,9 @@ The csv file `FINAL_metal_halide_full_moments.csv` includes the cation, anion, s
 
 ### MSD
 
-### jumps
+### Jumps
 
+### RDF plots
 
 ### Bond angles
 
