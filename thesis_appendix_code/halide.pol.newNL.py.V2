@@ -1,0 +1,220 @@
+#!/usr/bin/env python
+
+"""
+Corrects indices associated with Wannier Centers
+Calculates polarization of anions with 4 WCs and also angles between Li, WC, and anions. 
+"""
+
+#Import required modules
+import ase
+from ase import *
+from ase.io import *
+from ase.neighborlist import neighbor_list as nl
+#from ase.calculators.neighborlist import NeighborList as nl
+import numpy as np
+import csv, string
+WC_file=open("WC_data.dat",mode="w+")
+wtr = csv.writer(WC_file, delimiter=' ')
+
+
+def bonddist(cord1,cord2,latvec):
+    pbcdist=Atoms('O2',positions=[[1,0,0],[1,0,0]],cell=latvec,pbc=[True,True,True])
+    pbcdist.set_positions([cord1,cord2])
+    return pbcdist.get_distance(0,1,mic=True)
+
+def bonddiff(cord1,cord2,latvec):
+    pbcdist=Atoms('O2',positions=[[1,0,0],[1,0,0]],cell=latvec,pbc=[True,True,True])
+    pbcdist.set_positions([cord1,cord2])
+    return pbcdist.get_distance(0,1,mic=True,vector=True)
+
+def bondangle(cord1,cord2,cord3,latvec):
+    pbcdist=Atoms('O3',positions=[[1,0,0],[1,0,0],[1,0,0]],cell=latvec,pbc=[True,True,True])
+    pbcdist.set_positions([cord1,cord2,coord3])
+    return pbcdist.get_angle(0,1,2,mic=True,vector=True)
+
+def angle(cord1,cord2):
+	return np.arccos(np.dot(cord1,cord2)/(np.linalg.norm(cord1)*np.linalg.norm(cord2)))
+
+#Extract atom data from trajectory file and store in atomes object 'a'
+# Have user input number of WCs per atoms.  If WC per atom not equal to 4, skip tracking. 
+file = raw_input('Please enter the exact trajectory file name: ')
+#file = "name of your traj file. traj "
+traj = ase.io.trajectory.TrajectoryReader(file)
+
+
+ELinput = raw_input('Enter the atom types in order of the xyz file (eg: halide metal): ')
+#ELinput = "Br Ag"
+#ELinput = "Cu Cl"
+WCinput = raw_input('Enter the number of WC per atom in order of the xyz file (eg: 4 5): ')
+#WCinput = "5 4"
+
+mobileI = raw_input('Enter the cation (eg Ag or Cu): ') 
+#mobileI = 'Ag'
+#mobileI = 'Cu'
+
+#radiusCutoff ={('Cu','I'): 3.5, ('Cu','X'):0.1, ('I','X'):1.0}
+radiusCutoff ={('Ag','I'): 3.7, ('Ag','X'):0.1, ('I','X'):1.0}
+#radiusCutoff ={('Cu','Cl'): 2.3, ('Cu','X'):0.5, ('Cl','X'):0.8}
+
+print(radiusCutoff)
+elems = ELinput.split()
+WCper = [ int(x) for x in WCinput.split() ]
+
+
+# Each frame the simulation in the traj file, needs to be into a list, for easier access
+a=[]
+for atoms in traj:
+    a.append(atoms)
+
+#Initiate atoms object aCORRECT to store all corrected frames
+aCORRECT = len(a) * [[]]
+
+#Determine index of first ion for all frames 
+firstNONwc = a[0].get_chemical_symbols().count('X')
+numLi = a[0].get_chemical_symbols().count(mobileI)
+atomNUMs = a[0].get_atomic_numbers()
+latvec = a[0].get_cell()
+
+#Determine the indices of the ions with 4 WC
+WClist = []
+noWClist = []
+counter = 0
+for i in range(len(elems)):
+    nt = a[0].get_chemical_symbols().count(elems[i])
+    nwc = WCper[i]
+    if WCper[i]==4:
+         WClist.append((counter, counter+nwc*nt))
+    else:
+         noWClist.append((counter,counter+nwc*nt))
+    counter = counter+ nwc*nt
+#Loop through all frames of atoms object 'a', correct each frame, then add to aCORRECT
+for i in range(len(a)):
+#for i in range(10):
+	#Associate an ion with each WC=j in frame i, save in ionINDEXvec
+    centerAtoms, nLIST = nl('ij',a[i],radiusCutoff,self_interaction=False)
+    ionINDEXvec = np.zeros((firstNONwc))
+    for j in range(firstNONwc):
+        indices = nLIST[centerAtoms==j]
+        boolINDS = indices >= firstNONwc
+        ionINDEX = [k for k in range(len(boolINDS)) if  boolINDS[k]  == True]
+        ionneigh = np.zeros(len(ionINDEX))
+        for n in range(len(ionINDEX)):
+            ionneigh[n]=a[i].get_distance(j,indices[ionINDEX[n]],mic=True)
+            ionINDEXvec[j]=indices[ionINDEX[np.argmin(ionneigh)]]
+    #Determine the order of indices that would sort WC's in frame i to an ion
+    sortedWCindicies = np.argsort(ionINDEXvec)
+	#Create a new Atoms object containing new order of WC's of frame i 
+    aIsorted2ions = a[i][0:firstNONwc][sortedWCindicies] + a[i][firstNONwc:len(a[i])]
+    #Append frame to overall Atoms Object called 'aCORRECT' for first frame only!
+
+    if i == 0:
+        aCORRECT[i] = aIsorted2ions
+        ionINDEXvec0=ionINDEXvec[sortedWCindicies]
+        print ionINDEXvec0
+	#For all additional frames, compare each ion's order of WC positions to corresponding ion's order from previous frame, then correct order of current frame 
+    else:
+        correctINDEXlistWCs = np.zeros((firstNONwc))
+        for k in range(len(WClist)):
+            for m in range(WClist[k][0],WClist[k][1])[::4]:
+                radiusMATRIX_temp = np.zeros((4,4))
+                positionMATRIX_CURRENTframe = np.zeros((4,3))
+                positionMATRIX_PREVIOUSframe = np.zeros((4,3))
+                indexVEC_temp = np.array((10,11,12,13))
+                for s in range(4):
+                    #Insert positions of current Frame
+                    positionMATRIX_PREVIOUSframe[s,0] = aIsorted2ions.get_positions()[m+s][0]
+                    positionMATRIX_PREVIOUSframe[s,1] = aIsorted2ions.get_positions()[m+s][1]
+                    positionMATRIX_PREVIOUSframe[s,2] = aIsorted2ions.get_positions()[m+s][2]
+                     #Insert positions of previous Frame
+                    for n in range(4):
+                        positionMATRIX_CURRENTframe[n,0] = aCORRECT[i-1].get_positions()[m+n][0]
+                        positionMATRIX_CURRENTframe[n,1] = aCORRECT[i-1].get_positions()[m+n][1]
+                        positionMATRIX_CURRENTframe[n,2] = aCORRECT[i-1].get_positions()[m+n][2]
+					#Build Matrix of positions between WC's of each slide
+                        xDIFF = np.abs(aIsorted2ions.get_positions()[m+n][0] - aCORRECT[i-1].get_positions()[m+s][0])
+                        yDIFF = np.abs(aIsorted2ions.get_positions()[m+n][1] - aCORRECT[i-1].get_positions()[m+s][1])
+                        zDIFF = np.abs(aIsorted2ions.get_positions()[m+n][2] - aCORRECT[i-1].get_positions()[m+s][2])
+                        radius = np.sqrt(xDIFF**2 + yDIFF**2 + zDIFF**2)
+                        radiusMATRIX_temp[s,n] = radius
+					#Determine the closest WC in i-1 to the nth WC in i, then store in indexVEC_temp
+                    indexVEC_temp[s] = np.argmin(radiusMATRIX_temp[s])
+					#Ensure that the WC index you just stored is not associated with a WC in i-1 already taken. If so, make corrections
+                    indexCOUNTER = np.zeros((4), dtype = int)
+					#Loop until each WC in i is associated with a unique WC in i-1
+                    dupINDEXvec = [p for p in range(4) if (indexVEC_temp[p] == indexVEC_temp[s] and p != s)]
+                    while len(dupINDEXvec) == 1:
+                        k = dupINDEXvec[0]
+                        DIFF_k = np.abs(np.sort(radiusMATRIX_temp[k])[indexCOUNTER[k]] - np.sort(radiusMATRIX_temp[k])[indexCOUNTER[k]+1])
+                        DIFF_s = np.abs(np.sort(radiusMATRIX_temp[s])[indexCOUNTER[s]] - np.sort(radiusMATRIX_temp[s])[indexCOUNTER[s]+1])
+                        if DIFF_k > DIFF_s:
+                            indexVEC_temp[s] = np.argsort(radiusMATRIX_temp[s])[indexCOUNTER[s]+1]
+                            indexCOUNTER[s] += 1
+                        else:
+                            indexVEC_temp[k] = np.argsort(radiusMATRIX_temp[k])[indexCOUNTER[k]+1]
+                            indexCOUNTER[k] += 1
+                            s = k
+                        dupINDEXvec = [p for p in range(4) if (indexVEC_temp[p] == indexVEC_temp[s] and p != s)]
+				#Store the correct 4 indices of the nth ion in frame i
+                correctINDEXlistWCs[m:m+4] = indexVEC_temp + m
+        for l in range(len(noWClist)):
+            for p in range(noWClist[l][0],noWClist[l][1]):
+                correctINDEXlistWCs[p]=p
+#Print WC positions, then re-sort WCs in frame i according to new correct Index List
+        positionMATRIX = np.zeros((4,3))
+        correctINDEXlistWCs = correctINDEXlistWCs.astype(int)
+        aCORRECT[i] = aIsorted2ions[0:firstNONwc][correctINDEXlistWCs] + aIsorted2ions[firstNONwc:len(a[i])]
+	# plrzn is a vector that will store the polarization of each anion.
+    plrzn=np.zeros(len(a[i]))
+#    if i<=1:
+#            print plrzn
+#            print ionINDEXvec0
+#            print ionINDEXvec[sortedWCindicies]
+    for k in range(len(WClist)):
+        for m in range(WClist[k][0],WClist[k][1])[::4]:
+            ionT = int(ionINDEXvec0[m])
+            polarMATRIX = []
+            for n in range(4):
+                polarMATRIX.append(aCORRECT[i].get_distance(ionT,n+m,mic=True,vector=True))
+            plrzn[ionT]=np.sqrt(np.linalg.norm(np.sum(polarMATRIX,axis=0)))
+            towrite=[]
+            towrite.extend([i,ionT,plrzn[ionT]])
+            indices = nLIST[centerAtoms==ionT]
+            boolINDS = indices >= firstNONwc
+            ionINDEX = [y for y in range(len(boolINDS)) if  boolINDS[y]  == True]
+            ionneigh = np.zeros(len(ionINDEX))
+            for q in range(len(ionINDEX)):
+            # frame, polarized ion, polarization,mobile_ion, bond dist, bond angle  
+                ionneigh[q]=aCORRECT[i].get_distance(ionT,indices[ionINDEX[q]],mic=True)
+                if aCORRECT[i].get_chemical_symbols()[indices[ionINDEX[q]]] == mobileI:
+                    bd=aCORRECT[i].get_distance(ionT,indices[ionINDEX[q]],mic=True,vector=True)
+                    ba=angle(bd,np.sum(polarMATRIX,axis=0))
+                    towrite.append(indices[ionINDEX[q]])
+                    towrite.append(ionneigh[q])
+                    towrite.append(ba)
+            wtr.writerow(towrite)
+            #print j, [indices[k] for k in ionINDEX], [a[i].get_chemical_symbols()[indices[k]] for k in ionINDEX]
+#Grab only the first 8 WC's for plotting
+#aCORRECTshort = []
+#for slide in range(len(a)):
+#	aCORRECTshort.append(aCORRECT[slide][4:8])
+	#Print positions to see if WC's in correct location
+#print(aCORRECTshort)
+
+#Re-print positions to see if correctly altered
+#for slide in range(len(a)):
+#	positionMATRIX = np.zeros((4,3))
+#	for n in range(4):		    			 
+#		positionMATRIX[n,0] = aCORRECTshort[slide].get_positions()[n][0]
+#		positionMATRIX[n,1] = aCORRECTshort[slide].get_positions()[n][1]
+#		positionMATRIX[n,2] = aCORRECTshort[slide].get_positions()[n][2]
+#	print('')
+#	print(slide)
+#	print('')
+#	print(positionMATRIX)
+
+#Export entire atoms object into trajectory file		
+new_file=ase.io.trajectory.TrajectoryWriter("new_traj.traj",mode="w",atoms=aCORRECT[0])
+for atoms in aCORRECT:
+    new_file.write(atoms)
+
+new_file.close()
