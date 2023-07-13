@@ -28,3 +28,4 @@ The halide polarizations were calculated using `halide.pol.newNL.py.V2`
 The Jupyter Notebook `FINAL_Algorithm_for_Ea_and_diffusion.ipynb` includes all of the ML algorithm and bar plot (Figure 15) illustrating which features were most important. The CSV file `FINAL_metal_halide_full_moments.csv` was used for this notebook.
 
 ### Density plots
+The isosurface density diagrams (Figure 18) were created using `xyz2dens_pbc.x` and `xyz_transform.alpha.x`. `xyz_transform.alpha.x` collapses the supercell into a single unit cell, and `xyz2den_pbc.x` conducts symmetry operations to produce the final isosurface density diagrams. 
