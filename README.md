@@ -10,7 +10,7 @@ The csv file `FINAL_metal_halide_full_moments.csv` includes the cation, anion, s
 ## Appendix F . Code for bond analyses
 
 ### Diffusivity calculation
-The mean squared displacement of the cations was calculated using `msd.py` in order to calculate cation diffusivity. Liscenced by MIT. 
+The mean squared displacement of the cations was calculated using `msd.py` in order to calculate cation diffusivity. Licensed by MIT. 
 
 ### Jump analysis (NEWcreateSamosFile.py and findjumps.py)
 The program SITATOR was used to calcuate cation jumps. `NEWcreateSamosFile.py`found all the jump sites while `findjumps.py` filtered out the real jumps. 
@@ -24,9 +24,7 @@ The bond angles were calculated using `click_AngleAnalysis.py`.
 ### Polarization analysis
 The halide polarizations were calculated using `halide.pol.newNL.py.V2`
 
-
 ### ML algorithm
 The Jupyter Notebook `FINAL_Algorithm_for_Ea_and_diffusion.ipynb` includes all of the ML algorithm and bar plot (Figure 15) illustrating which features were most important. The CSV file `FINAL_metal_halide_full_moments.csv` was used for this notebook.
-
 
 ### Density plots
